@@ -25,4 +25,8 @@
 //#define LOG_LEVEL LEVEL_DEBUG
 #define LOG_REDIRECT	0
 
+#ifndef BUFFER_USE_MUTEX
+#define BUFFER_USE_MUTEX  0
+#endif
+
 #endif // CONFIG_H_
