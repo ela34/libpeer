@@ -118,7 +118,7 @@ static void onmessasge(char *msg, size_t len, void *user_data) {
   }
 }
 
-static void on_request_keyframe(void *data) {
+static void on_request_keyframe() {
 
   printf("request keyframe\n");
 }
