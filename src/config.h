@@ -23,7 +23,9 @@
 #define IFR_NAME "w"
 
 //#define LOG_LEVEL LEVEL_DEBUG
-#define LOG_REDIRECT	0
+#ifndef LOG_REDIRECT
+#define LOG_REDIRECT 0
+#endif
 
 #ifndef BUFFER_USE_MUTEX
 #define BUFFER_USE_MUTEX  0
