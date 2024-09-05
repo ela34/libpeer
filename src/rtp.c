@@ -194,7 +194,7 @@ static int rtp_encoder_encode_generic(RtpEncoder *rtp_encoder, uint8_t *buf, siz
   return 0;
 }
 
-void rtp_encoder_init(RtpEncoder *rtp_encoder, MediaCodec codec, RtpOnPacket on_packet, void *user_data) {
+void rtp_encoder_init(RtpEncoder *rtp_encoder, MediaCodec codec, uint32_t ssrc, RtpOnPacket on_packet, void *user_data) {
 
   rtp_encoder->on_packet = on_packet;
   rtp_encoder->user_data = user_data;
@@ -205,25 +205,25 @@ void rtp_encoder_init(RtpEncoder *rtp_encoder, MediaCodec codec, RtpOnPacket on_
 
     case CODEC_H264:
       rtp_encoder->type = PT_H264;
-      rtp_encoder->ssrc = SSRC_H264;
+      rtp_encoder->ssrc = ssrc;
       rtp_encoder->timestamp_increment = 90000/30; // 30 FPS.
       rtp_encoder->encode_func = rtp_encoder_encode_h264;
       break;
     case CODEC_PCMA:
       rtp_encoder->type = PT_PCMA;
-      rtp_encoder->ssrc = SSRC_PCMA;
+      rtp_encoder->ssrc = ssrc;
       rtp_encoder->timestamp_increment = AUDIO_LATENCY*8000/1000;
       rtp_encoder->encode_func = rtp_encoder_encode_generic;
       break;
     case CODEC_PCMU:
       rtp_encoder->type = PT_PCMU;
-      rtp_encoder->ssrc = SSRC_PCMU;
+      rtp_encoder->ssrc = ssrc;
       rtp_encoder->timestamp_increment = AUDIO_LATENCY*8000/1000;
       rtp_encoder->encode_func = rtp_encoder_encode_generic;
       break;
     case CODEC_OPUS:
       rtp_encoder->type = PT_OPUS;
-      rtp_encoder->ssrc = SSRC_OPUS;
+      rtp_encoder->ssrc = ssrc;
       rtp_encoder->timestamp_increment = AUDIO_LATENCY*48000/1000;
       rtp_encoder->encode_func = rtp_encoder_encode_generic;
       break;

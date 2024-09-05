@@ -49,6 +49,7 @@ struct PeerConnection {
   uint32_t remote_assrc;
   uint32_t remote_vssrc;
 
+	SdpBundleInfo bundle_info;
 };
 
 static void peer_connection_outgoing_rtp_packet(uint8_t *data, size_t size, void *user_data) {
@@ -178,6 +179,11 @@ PeerConnection* peer_connection_create(PeerConfiguration *config) {
 
   memcpy(&pc->config, config, sizeof(PeerConfiguration));
 
+  if (pc->config.video_ssrc == 0)
+    pc->config.video_ssrc = (uint32_t) rand();
+  if (pc->config.audio_ssrc == 0)
+    pc->config.audio_ssrc = (uint32_t) rand();
+
   pc->agent.mode = AGENT_MODE_CONTROLLED;
 
   memset(&pc->sctp, 0, sizeof(pc->sctp));
@@ -195,7 +201,7 @@ PeerConnection* peer_connection_create(PeerConfiguration *config) {
     LOGI("Audio allocates heap size: %d", AUDIO_RB_DATA_LENGTH);
     pc->audio_rb = buffer_new(AUDIO_RB_DATA_LENGTH);
 
-    rtp_encoder_init(&pc->artp_encoder, pc->config.audio_codec,
+    rtp_encoder_init(&pc->artp_encoder, pc->config.audio_codec, pc->config.audio_ssrc,
      peer_connection_outgoing_rtp_packet, (void*)pc);
 
     rtp_decoder_init(&pc->artp_decoder, pc->config.audio_codec,
@@ -206,7 +212,7 @@ PeerConnection* peer_connection_create(PeerConfiguration *config) {
     LOGI("Video allocates heap size: %d", VIDEO_RB_DATA_LENGTH);
     pc->video_rb = buffer_new(VIDEO_RB_DATA_LENGTH);
 
-    rtp_encoder_init(&pc->vrtp_encoder, pc->config.video_codec,
+    rtp_encoder_init(&pc->vrtp_encoder, pc->config.video_codec, pc->config.video_ssrc,
      peer_connection_outgoing_rtp_packet, (void*)pc);
 
     rtp_decoder_init(&pc->vrtp_decoder, pc->config.video_codec,
@@ -292,58 +298,7 @@ static void peer_connection_state_new(PeerConnection *pc) {
   }
 
   agent_get_local_description(&pc->agent, description, sizeof(pc->temp_buf));
-
-  memset(&pc->local_sdp, 0, sizeof(pc->local_sdp));
-  // TODO: check if we have video or audio codecs
-  sdp_create(&pc->local_sdp,
-   pc->config.video_codec != CODEC_NONE,
-   pc->config.audio_codec != CODEC_NONE,
-   pc->config.datachannel);
-
-
-  if (pc->config.video_codec == CODEC_H264) {
-
-    sdp_append_h264(&pc->local_sdp);
-    sdp_append(&pc->local_sdp, "a=fingerprint:sha-256 %s", pc->dtls_srtp.local_fingerprint);
-    sdp_append(&pc->local_sdp, "a=setup:passive");
-    strcat(pc->local_sdp.content, description);
-  }
-
-
-  switch (pc->config.audio_codec) {
-
-    case CODEC_PCMA:
-
-      sdp_append_pcma(&pc->local_sdp);
-      sdp_append(&pc->local_sdp, "a=fingerprint:sha-256 %s", pc->dtls_srtp.local_fingerprint);
-      sdp_append(&pc->local_sdp, "a=setup:passive");
-      strcat(pc->local_sdp.content, description);
-      break;
-
-    case CODEC_PCMU:
-
-      sdp_append_pcmu(&pc->local_sdp);
-      sdp_append(&pc->local_sdp, "a=fingerprint:sha-256 %s", pc->dtls_srtp.local_fingerprint);
-      sdp_append(&pc->local_sdp, "a=setup:passive");
-      strcat(pc->local_sdp.content, description);
-      break;
-
-    case CODEC_OPUS:
-      sdp_append_opus(&pc->local_sdp);
-      sdp_append(&pc->local_sdp, "a=fingerprint:sha-256 %s", pc->dtls_srtp.local_fingerprint);
-      sdp_append(&pc->local_sdp, "a=setup:passive");
-      strcat(pc->local_sdp.content, description);
-
-    default:
-      break;
-  }
-
-  if (pc->config.datachannel) {
-    sdp_append_datachannel(&pc->local_sdp);
-    sdp_append(&pc->local_sdp, "a=fingerprint:sha-256 %s", pc->dtls_srtp.local_fingerprint);
-    sdp_append(&pc->local_sdp, "a=setup:passive");
-    strcat(pc->local_sdp.content, description);
-  }
+  sdp_create(&pc->local_sdp, &pc->config, &pc->bundle_info, &pc->dtls_srtp, description);
 
   pc->b_offer_created = 1;
 
@@ -471,35 +426,24 @@ int peer_connection_loop(PeerConnection *pc) {
   return 0;
 }
 
+void peer_connection_parse_remote_description(PeerConnection *pc, const char *sdp_text) {
+  sdp_parse(&pc->bundle_info, sdp_text);
+  pc->bundle_info.parsed = 1;
+}
+
 void peer_connection_set_remote_description(PeerConnection *pc, const char *sdp_text) {
 
-  char *start = (char*)sdp_text;
-  char *line = NULL;
-  char buf[256];
-  char *ssrc_start = NULL;
-  uint32_t *ssrc = NULL;
+  if (pc->bundle_info.parsed == 0)
+    peer_connection_parse_remote_description(pc, sdp_text);
 
-  while ((line = strstr(start, "\r\n"))) {
-
-    line = strstr(start, "\r\n");
-    strncpy(buf, start, line - start);
-    buf[line - start] = '\0';
-
-    if (strstr(buf, "a=mid:video")) {
-      ssrc = &pc->remote_vssrc;
-    } else if (strstr(buf, "a=mid:audio")) {
-      ssrc = &pc->remote_assrc;
-    }
-
-    if ((ssrc_start = strstr(buf, "a=ssrc:")) && ssrc) {
-      *ssrc = strtoul(ssrc_start + 7, NULL, 10);
-      LOGD("SSRC: %"PRIu32, *ssrc);
-    }
-
-    start = line + 2;
+  for (int i = 0 ; i < pc->bundle_info.count ; i++) {
+    if (strcmp(pc->bundle_info.info[i].mid_type, "audio") == 0)
+      pc->remote_assrc = pc->bundle_info.info[i].ssrc;
+    else if (strcmp(pc->bundle_info.info[i].mid_type, "video") == 0)
+      pc->remote_vssrc = pc->bundle_info.info[i].ssrc;
   }
 
-  agent_set_remote_description(&pc->agent, (char*)sdp_text);
+  agent_set_remote_description(&pc->agent, (char *) sdp_text);
   STATE_CHANGED(pc, PEER_CONNECTION_CHECKING);
 }
 

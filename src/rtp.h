@@ -102,7 +102,7 @@ struct RtpEncoder {
 
 int rtp_packet_validate(uint8_t *packet, size_t size);
 
-void rtp_encoder_init(RtpEncoder *rtp_encoder, MediaCodec codec, RtpOnPacket on_packet, void *user_data);
+void rtp_encoder_init(RtpEncoder *rtp_encoder, MediaCodec codec, uint32_t ssrc, RtpOnPacket on_packet, void *user_data);
 
 int rtp_encoder_encode(RtpEncoder *rtp_encoder, uint8_t *data, size_t size);
 
