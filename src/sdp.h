@@ -13,7 +13,6 @@
 #endif
 
 typedef struct Sdp {
-
   char content[SDP_CONTENT_LENGTH];
 
 } Sdp;
@@ -40,24 +39,26 @@ typedef struct SdpBundleInfo {
 } SdpBundleInfo;
 
 struct PeerConfiguration;
+struct PeerConnection;
 struct DtlsSrtp;
+struct Agent;
 
-void sdp_append_h264(Sdp *sdp, const char *mid, uint32_t ssrc);
+void sdp_append_h264(Sdp* sdp, const char* mid, uint32_t ssrc);
 
-void sdp_append_pcma(Sdp *sdp, const char *mid, uint32_t ssrc);
+void sdp_append_pcma(Sdp* sdp, const char* mid, uint32_t ssrc);
 
-void sdp_append_pcmu(Sdp *sdp, const char *mid, uint32_t ssrc);
+void sdp_append_pcmu(Sdp* sdp, const char* mid, uint32_t ssrc);
 
-void sdp_append_opus(Sdp *sdp, const char *mid, uint32_t ssrc);
+void sdp_append_opus(Sdp* sdp, const char* mid, uint32_t ssrc);
 
-void sdp_append_datachannel(Sdp *sdp, const char *mid);
+void sdp_append_datachannel(Sdp* sdp, const char* mid);
 
-void sdp_create(Sdp *sdp, struct PeerConfiguration *config, SdpBundleInfo *bundle_info, struct DtlsSrtp *dtls_srtp, char description[CONFIG_MTU]);
+void sdp_create(Sdp *sdp, struct PeerConfiguration *config, SdpBundleInfo *bundle_info, struct DtlsSrtp *dtls_srtp, const char* role, char description[CONFIG_MTU]);
 
-int sdp_append(Sdp *sdp, const char *format, ...);
+int sdp_append(Sdp* sdp, const char* format, ...);
 
-void sdp_reset(Sdp *sdp);
+void sdp_reset(Sdp* sdp);
 
-void sdp_parse(SdpBundleInfo *bundle_info, const char *sdp_text);
+void sdp_parse(struct Agent* agent, struct DtlsSrtp* dtls_srtp, SdpBundleInfo* bundle_info, int* role, const char* sdp_text);
 
 #endif // SDP_H_

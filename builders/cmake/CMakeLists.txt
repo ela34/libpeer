@@ -40,7 +40,7 @@ add_subdirectory_once (libsrtp2-module ${ccRootDir}/components/libsrtp2/builders
 add_subdirectory_once (cjson-module ${ccRootDir}/components/cJSON/builders/cmake)
 list(APPEND link_Libraries cjson mbedtls mbedcrypto mbedx509 libsrtp2 usrsctp-static)
 
-add_definitions(-DCONFIG_MQTT=0 -DCONFIG_HTTP=0 -DLOG_LEVEL=LEVEL_DEBUG -DLOG_REDIRECT=1 -DBUFFER_USE_MUTEX=1 -DAGENT_MAX_CANDIDATES=20 -DAGENT_MAX_CANDIDATE_PAIRS=400)
+add_definitions(-DICE_LITE -DCONFIG_MQTT=0 -DCONFIG_HTTP=0 -DLOG_LEVEL=LEVEL_DEBUG -DLOG_REDIRECT=1 -DBUFFER_USE_MUTEX=1 -DAGENT_MAX_CANDIDATES=20 -DAGENT_MAX_CANDIDATE_PAIRS=400)
 add_library(peer ${sourceFiles})
 target_link_libraries(peer ${link_Libraries})
 

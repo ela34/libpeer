@@ -6,6 +6,7 @@
 #include "dtls_srtp.h"
 #include "peer_connection.h"
 #include "utils.h"
+#include "agent.h"
 
 void sdp_parse_bundle_line(const char* line, SdpBundleInfo *bundle_info) {
   const char* token;
@@ -42,7 +43,7 @@ void sdp_set_bundle_info(SdpBundleInfo *bundle_info, char mid_name[MAX_BUNDLE_ID
   }
 }
 
-void sdp_parse(SdpBundleInfo *bundle_info, const char *sdp_text) {
+void sdp_parse(struct Agent* agent, struct DtlsSrtp* dtls_srtp, SdpBundleInfo* bundle_info, int* role, const char* sdp_text) {
   char *start = (char*)sdp_text;
   char *line = NULL;
   char buf[MAX_SDP_LINE_LENGTH], mid_type[MAX_BUNDLE_ID_NAME_LENGTH], mid_name[MAX_BUNDLE_ID_LENGTH];
@@ -51,6 +52,7 @@ void sdp_parse(SdpBundleInfo *bundle_info, const char *sdp_text) {
   int has_info = 0;
   uint32_t ssrc_id = 0;
 
+  (*role) = DTLS_SRTP_ROLE_SERVER;
   mid_type[0] = mid_name[0] = 0;
   bundle_info->count = 0;
   while ((line = strstr(start, "\r\n")) != NULL) {
@@ -90,6 +92,15 @@ void sdp_parse(SdpBundleInfo *bundle_info, const char *sdp_text) {
         ssrc_id = strtoul(&buf[7], NULL, 10);
         LOGD("a=ssrc: '%s' = %lu\n", &buf[7], ssrc_id);
       }
+
+      if (strstr(buf, "a=setup:passive")) {
+        agent->mode = AGENT_MODE_CONTROLLING;
+        (*role) = DTLS_SRTP_ROLE_CLIENT;
+      }
+
+      if (strstr(buf, "a=fingerprint")) {
+        strncpy(dtls_srtp->remote_fingerprint, buf + 22, DTLS_SRTP_FINGERPRINT_LENGTH);
+      }
     }
     start = line + 2;
   }
@@ -111,6 +122,9 @@ void sdp_append_bundle(Sdp *sdp, struct PeerConfiguration *config, SdpBundleInfo
   sdp_append(sdp, "o=- 1495799811084970 1495799811084970 IN IP4 0.0.0.0");
   sdp_append(sdp, "s=-");
   sdp_append(sdp, "t=0 0");
+#if ICE_LITE
+  sdp_append(sdp, "a=ice-lite");
+#endif
 
   memset(bundle, 0, sizeof(bundle));
 
@@ -134,8 +148,7 @@ void sdp_append_bundle(Sdp *sdp, struct PeerConfiguration *config, SdpBundleInfo
   sdp_append(sdp, "a=msid-semantic: WMS myStream");
 }
 
-int sdp_append(Sdp *sdp, const char *format, ...) {
-
+int sdp_append(Sdp* sdp, const char* format, ...) {
   va_list argptr;
 
   char attr[SDP_ATTR_LENGTH];
@@ -153,12 +166,11 @@ int sdp_append(Sdp *sdp, const char *format, ...) {
   return 0;
 }
 
-void sdp_reset(Sdp *sdp) {
-
+void sdp_reset(Sdp* sdp) {
   memset(sdp->content, 0, sizeof(sdp->content));
 }
 
-void sdp_append_h264(Sdp *sdp, const char *mid, uint32_t ssrc) {
+void sdp_append_h264(Sdp* sdp, const char* mid, uint32_t ssrc) {
 
   sdp_append(sdp, "m=video 9 UDP/TLS/RTP/SAVPF 96 102");
   sdp_append(sdp, "a=rtcp-fb:102 nack");
@@ -174,7 +186,7 @@ void sdp_append_h264(Sdp *sdp, const char *mid, uint32_t ssrc) {
   sdp_append(sdp, "a=rtcp-mux");
 }
 
-void sdp_append_pcma(Sdp *sdp, const char *mid, uint32_t ssrc) {
+void sdp_append_pcma(Sdp* sdp, const char* mid, uint32_t ssrc) {
 
   sdp_append(sdp, "m=audio 9 UDP/TLS/RTP/SAVP 8");
   sdp_append(sdp, "a=rtpmap:8 PCMA/8000");
@@ -185,9 +197,9 @@ void sdp_append_pcma(Sdp *sdp, const char *mid, uint32_t ssrc) {
   sdp_append(sdp, "a=rtcp-mux");
 }
 
-void sdp_append_pcmu(Sdp *sdp, const char *mid, uint32_t ssrc) {
+void sdp_append_pcmu(Sdp* sdp, const char* mid, uint32_t ssrc) {
 
-  sdp_append(sdp, "m=audio 9 UDP/TLS/RTP/SAVP 0");
+  sdp_append(sdp, "m=audio 9 UDP/TLS/RTP/SAVPF 0");
   sdp_append(sdp, "a=rtpmap:0 PCMU/8000");
   sdp_append(sdp, "a=ssrc:%lu cname:webrtc-pcmu", ssrc);
   sdp_append(sdp, "a=sendrecv");
@@ -196,7 +208,7 @@ void sdp_append_pcmu(Sdp *sdp, const char *mid, uint32_t ssrc) {
   sdp_append(sdp, "a=rtcp-mux");
 }
 
-void sdp_append_opus(Sdp *sdp, const char *mid, uint32_t ssrc) {
+void sdp_append_opus(Sdp* sdp, const char* mid, uint32_t ssrc) {
 
   sdp_append(sdp, "m=audio 9 UDP/TLS/RTP/SAVP 111");
   sdp_append(sdp, "a=rtpmap:111 opus/48000/2");
@@ -207,7 +219,7 @@ void sdp_append_opus(Sdp *sdp, const char *mid, uint32_t ssrc) {
   sdp_append(sdp, "a=rtcp-mux");
 }
 
-void sdp_append_datachannel(Sdp *sdp, const char *mid) {
+void sdp_append_datachannel(Sdp* sdp, const char* mid) {
 
   sdp_append(sdp, "m=application 50712 UDP/DTLS/SCTP webrtc-datachannel");
   sdp_append(sdp, "a=mid:%s", mid);
@@ -217,7 +229,7 @@ void sdp_append_datachannel(Sdp *sdp, const char *mid) {
 }
 
 
-void sdp_create(Sdp *local_sdp, struct PeerConfiguration *config, SdpBundleInfo *bundle_info, DtlsSrtp *dtls_srtp, char description[CONFIG_MTU]) {
+void sdp_create(Sdp *local_sdp, struct PeerConfiguration *config, SdpBundleInfo *bundle_info, DtlsSrtp *dtls_srtp, const char* role, char description[CONFIG_MTU]) {
   memset(local_sdp, 0, sizeof(*local_sdp));
   // TODO: check if we have video or audio codecs
   sdp_append_bundle(local_sdp, config, bundle_info);
@@ -228,21 +240,21 @@ void sdp_create(Sdp *local_sdp, struct PeerConfiguration *config, SdpBundleInfo 
         case CODEC_PCMA:
           sdp_append_pcma(local_sdp, bundle_info->info[i].mid_name, config->audio_ssrc);
           sdp_append(local_sdp, "a=fingerprint:sha-256 %s", dtls_srtp->local_fingerprint);
-          sdp_append(local_sdp, "a=setup:passive");
+          sdp_append(local_sdp, role);
           strcat(local_sdp->content, description);
           break;
 
         case CODEC_PCMU:
           sdp_append_pcmu(local_sdp, bundle_info->info[i].mid_name, config->audio_ssrc);
           sdp_append(local_sdp, "a=fingerprint:sha-256 %s", dtls_srtp->local_fingerprint);
-          sdp_append(local_sdp, "a=setup:passive");
+          sdp_append(local_sdp, role);
           strcat(local_sdp->content, description);
           break;
 
         case CODEC_OPUS:
           sdp_append_opus(local_sdp, bundle_info->info[i].mid_name, config->audio_ssrc);
           sdp_append(local_sdp, "a=fingerprint:sha-256 %s", dtls_srtp->local_fingerprint);
-          sdp_append(local_sdp, "a=setup:passive");
+          sdp_append(local_sdp, role);
           strcat(local_sdp->content, description);
           break;
 
@@ -252,14 +264,15 @@ void sdp_create(Sdp *local_sdp, struct PeerConfiguration *config, SdpBundleInfo 
     } else if ((strcmp(bundle_info->info[i].mid_type, "video") == 0) && (config->video_codec == CODEC_H264)) {
       sdp_append_h264(local_sdp, bundle_info->info[i].mid_name, config->video_ssrc);
       sdp_append(local_sdp, "a=fingerprint:sha-256 %s", dtls_srtp->local_fingerprint);
-      sdp_append(local_sdp, "a=setup:passive");
+      sdp_append(local_sdp, role);
       strcat(local_sdp->content, description);
     }  else if ((strcmp(bundle_info->info[i].mid_type, "application") == 0) && config->datachannel) {
       sdp_append_datachannel(local_sdp, bundle_info->info[i].mid_name);
       sdp_append(local_sdp, "a=fingerprint:sha-256 %s", dtls_srtp->local_fingerprint);
-      sdp_append(local_sdp, "a=setup:passive");
+      sdp_append(local_sdp, role);
       strcat(local_sdp->content, description);
     }
   }
+  sdp_append(local_sdp, "a=end-of-candidates");
 }
 
